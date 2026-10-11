@@ -427,8 +427,19 @@ void RB_T_FillDepthBuffer( const drawSurf_t *surf ) {
 		qglColor4fv( color );
 		globalImages->whiteImage->Bind();
 
+		// the clip plane alpha notch on the second texture unit only takes effect with
+		// alpha testing, otherwise solid geometry behind the clip plane fills the depth buffer
+		if ( backEnd.viewDef->numClipPlanes ) {
+			qglEnable( GL_ALPHA_TEST );
+			qglAlphaFunc( GL_GREATER, 0.5f );
+		}
+
 		// draw it
 		RB_DrawElementsWithCounters( tri );
+
+		if ( backEnd.viewDef->numClipPlanes ) {
+			qglDisable( GL_ALPHA_TEST );
+		}
 	}
 
 

@@ -1176,8 +1176,7 @@ void idInteraction::AddActiveInteraction( void ) {
 
 			// check for view specific shadow suppression (player shadows, etc)
 			if ( !r_skipSuppress.GetBool() ) {
-				if ( entityDef->parms.suppressShadowInViewID &&
-					entityDef->parms.suppressShadowInViewID == tr.viewDef->renderView.viewID ) {
+				if ( R_ViewSuppressesShadow( entityDef->parms.suppressShadowInViewID ) ) {
 					continue;
 				}
 				if ( entityDef->parms.suppressShadowInLightID &&

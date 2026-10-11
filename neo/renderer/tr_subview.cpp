@@ -95,6 +95,56 @@ static void R_PlaneForSurface( const srfTriangles_t *tri, idPlane &plane ) {
 
 /*
 =========================
+R_ScalePortalFadeDistance
+
+Scales a directportal material fade distance (shaderParms[parm] is the far-fade distance,
+shaderParms[parm + 1] the near-fade distance), returns 0 (no fade) if the fade is disabled.
+
+Portals using the fade distances of the entity def (600 / 400) are scaled by r_portalFadeScale.
+Maps set shorter distances on portals whose destination would show geometry that is not meant
+to be seen from far away (e.g. the inside of another portal frame), these are scaled by
+r_portalMapFadeScale. Values <= 0 have special meanings (0 = no fade), so they are kept as they are
+=========================
+*/
+static const float PORTAL_DEF_FAR_FADE_DISTANCE		= 600.0f;	// object_portal in def/portals.def
+static const float PORTAL_DEF_NEAR_FADE_DISTANCE	= 400.0f;
+
+float R_ScalePortalFadeDistance( const float *shaderParms, int parm, float distance ) {
+	if ( distance <= 0.0f ) {
+		return distance;
+	}
+	const bool defFade = shaderParms[parm] == PORTAL_DEF_FAR_FADE_DISTANCE &&
+		( shaderParms[parm + 1] == PORTAL_DEF_NEAR_FADE_DISTANCE || shaderParms[parm + 1] == 0.0f );
+	const float scale = defFade ? r_portalFadeScale.GetFloat() : r_portalMapFadeScale.GetFloat();
+	return ( scale > 0.0f ) ? distance * scale : 0.0f;
+}
+
+/*
+=========================
+R_ViewSuppressesShadow
+
+Returns true if an entity shadow suppressed in the given view ID should not be drawn in
+the current view. Game portal views clear the view ID so the player body shows up through
+the portal, but the player shadow stays suppressed in them as in the view they are seen from
+=========================
+*/
+bool R_ViewSuppressesShadow( int suppressShadowInViewID ) {
+	if ( !suppressShadowInViewID ) {
+		return false;
+	}
+	for ( const viewDef_t *view = tr.viewDef ; view ; view = view->superView ) {
+		if ( view->renderView.viewID == suppressShadowInViewID ) {
+			return true;
+		}
+		if ( !view->subviewSurface || view->subviewSurface->material->GetSubviewClass() != SC_PORTAL ) {
+			break;
+		}
+	}
+	return false;
+}
+
+/*
+=========================
 R_PreciseCullSurface
 
 Check the surface for visibility on a per-triangle basis
@@ -172,9 +222,13 @@ bool R_PreciseCullSurface( const drawSurf_t *drawSurf, idBounds &ndcBounds ) {
 
 			dir = v1 - localView;
 
+			// skip back facing triangles instead of culling the whole surface,
+			// game portal surfaces are not flat (recessed frames), so some of
+			// their triangles face away when looking at them from an angle;
+			// the surface is still culled below if all of its triangles face away
 			dot = normal * dir;
 			if ( dot >= 0.0f ) {
-				return true;
+				continue;
 			}
 		}
 
@@ -187,6 +241,13 @@ bool R_PreciseCullSurface( const drawSurf_t *drawSurf, idBounds &ndcBounds ) {
 
 		for ( j = 0; j < 4; j++ ) {
 			if ( !w.ClipInPlace( -tr.viewDef->frustum[j], 0.1f ) ) {
+				break;
+			}
+		}
+		// also clip to the view clip planes (positive side is visible), so surfaces behind
+		// a mirror or a game portal destination don't generate subviews of their own
+		for ( j = 0; j < tr.viewDef->numClipPlanes && w.GetNumPoints(); j++ ) {
+			if ( !w.ClipInPlace( tr.viewDef->clipPlanes[j], 0.1f ) ) {
 				break;
 			}
 		}
@@ -463,8 +524,9 @@ bool	R_GenerateSurfaceSubview( drawSurf_t *drawSurf ) {
 	// never recurse through a subview surface that we are
 	// already seeing through
 	for ( parms = tr.viewDef ; parms ; parms = parms->superView ) {
+		// (game portal surfaces get new flattened geometry for every view, so compare the material too)
 		if ( parms->subviewSurface
-			&& parms->subviewSurface->geo == drawSurf->geo
+			&& ( parms->subviewSurface->geo == drawSurf->geo || parms->subviewSurface->material == drawSurf->material )
 			&& parms->subviewSurface->space->entityDef == drawSurf->space->entityDef ) {
 			break;
 		}
@@ -551,10 +613,30 @@ bool	R_GenerateSurfaceSubview( drawSurf_t *drawSurf ) {
 			}
 			// if( tr.viewDef->isSubview ) return false;
 
+			// game portals are only visible from the front, their surfaces are recessed
+			// so a few of their triangles can still face the view from behind
+			const renderEntity_t &portalParms = drawSurf->space->entityDef->parms;
+			if ( ( tr.viewDef->renderView.vieworg - portalParms.origin ) * portalParms.axis[0] <= 0.0f ) {
+				return false;
+			}
+
+			// limit portals seen through portals, the number of views can grow very fast without the distance fade
+			int portalDepth = 0;
+			for ( const viewDef_t *view = tr.viewDef ; view ; view = view->superView ) {
+				if ( view->subviewSurface && view->subviewSurface->material->GetSubviewClass() == SC_PORTAL ) {
+					portalDepth++;
+				}
+			}
+			if ( portalDepth >= r_portalMaxDepth.GetInteger() ) {
+				return false;
+			}
+
 			//k: idMaterial::directPortalDistance may be max distance for render, also see `materials/portals.mtr`.
-			int index = shader->GetDirectPortalDistance();
-			if ( index >= 0 && index < EXP_REG_NUM_PREDEFINED ) {
-				float maxPortalDistanceLimit = drawSurf->space->entityDef->parms.shaderParms[index];
+			// the material gives an expression register, convert it to a shader parm index
+			int index = shader->GetDirectPortalDistance() - EXP_REG_PARM0;
+			if ( index >= 0 && index + 1 < MAX_ENTITY_SHADER_PARMS ) {
+				const float *portalShaderParms = drawSurf->space->entityDef->parms.shaderParms;
+				float maxPortalDistanceLimit = R_ScalePortalFadeDistance( portalShaderParms, index, portalShaderParms[index] );
 				//k: maybe parm == 0
 				if ( maxPortalDistanceLimit > 0.0f && ( tr.viewDef->renderView.vieworg - drawSurf->space->entityDef->parms.origin ).LengthFast() > maxPortalDistanceLimit ) {
 					return false;
@@ -608,8 +690,12 @@ bool	R_GenerateSurfaceSubview( drawSurf_t *drawSurf ) {
 			idMat3 hh3( forward2, left2, up2 );
 			parms->renderView.viewaxis = hh3;
 			parms->initialViewAreaOrigin = remoteRenderView->vieworg + remoteRenderView->viewaxis[0] * 16; //k: offset TODO how many???, this value will be using find areaNum
-			parms->renderView.vieworg = remoteRenderView->vieworg;
+			// place the camera behind the destination portal, mirroring the viewer's offset from the
+			// source portal, so parallax changes when moving towards/away from the portal; the clip
+			// plane above removes the geometry between this camera and the destination portal
+			parms->renderView.vieworg = pos2;
 
+			parms->scissor = scissor;
 			parms->superView = tr.viewDef;
 			parms->subviewSurface = drawSurf;
 
