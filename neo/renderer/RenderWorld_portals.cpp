@@ -920,7 +920,18 @@ void idRenderWorldLocal::FindViewLightsAndEntities( void ) {
 		// note that the center of projection for flowing through portals may
 		// be a different point than initialViewAreaOrigin for subviews that
 		// may have the viewOrigin in a solid/invalid area
-		FlowViewThroughPortals( tr.viewDef->renderView.vieworg, 5, tr.viewDef->frustum );
+		if ( tr.viewDef->numClipPlanes && !tr.viewDef->isMirror ) {
+			// game portal views have their camera behind the destination portal,
+			// so use its plane as the front plane to skip everything behind it
+			idPlane	planes[5];
+			for ( int i = 0 ; i < 4 ; i++ ) {
+				planes[i] = tr.viewDef->frustum[i];
+			}
+			planes[4] = -tr.viewDef->clipPlanes[0];
+			FlowViewThroughPortals( tr.viewDef->renderView.vieworg, 5, planes );
+		} else {
+			FlowViewThroughPortals( tr.viewDef->renderView.vieworg, 5, tr.viewDef->frustum );
+		}
 	}
 }
 

@@ -912,6 +912,9 @@ extern idCVar r_skipNewAmbient;			// bypasses all vertex/fragment program ambien
 extern idCVar r_skipBlendLights;		// skip all blend lights
 extern idCVar r_skipFogLights;			// skip all fog lights
 extern idCVar r_skipSubviews;			// 1 = don't render any mirrors / cameras / etc
+extern idCVar r_portalFadeScale;		// scale of the default game portal fade distance, 0 = never fade
+extern idCVar r_portalMapFadeScale;	// scale of the game portal fade distances set by maps, 0 = never fade
+extern idCVar r_portalMaxDepth;		// max number of game portals seen through each other
 extern idCVar r_skipGuiShaders;			// 1 = don't render any gui elements on surfaces
 extern idCVar r_skipParticles;			// 1 = don't render any particles
 extern idCVar r_skipUpdates;			// 1 = don't accept any entity or light updates, making everything static
@@ -1558,6 +1561,8 @@ SUBVIEW
 */
 
 bool	R_PreciseCullSurface( const drawSurf_t *drawSurf, idBounds &ndcBounds );
+float	R_ScalePortalFadeDistance( const float *shaderParms, int parm, float distance );
+bool	R_ViewSuppressesShadow( int suppressShadowInViewID );
 bool	R_GenerateSubViews( void );
 
 /*

@@ -457,7 +457,7 @@ void idRenderWorldLocal::CreateLightDefInteractions( idRenderLightLocal *ldef ) 
 				}
 				// if we are suppressing its shadow in this view, skip
 				if ( !r_skipSuppress.GetBool() ) {
-					if ( edef->parms.suppressShadowInViewID && edef->parms.suppressShadowInViewID == tr.viewDef->renderView.viewID ) {
+					if ( R_ViewSuppressesShadow( edef->parms.suppressShadowInViewID ) ) {
 						continue;
 					}
 					if ( edef->parms.suppressShadowInLightID && edef->parms.suppressShadowInLightID == ldef->parms.lightId ) {
@@ -1147,6 +1147,17 @@ void R_AddDrawSurf( const srfTriangles_t *tri, const viewEntity_t *space, const 
 		}
 
 		((float *)shaderParms)[SHADERPARM_DISTANCE] = R_CalcViewAndEntityDistance( tr.viewDef, renderEntity );
+
+		// game portal materials fade to black between the near-fade (directportal parm + 1)
+		// and the far-fade (directportal parm) distances, scale both (r_portalFadeScale)
+		float portalShaderParms[MAX_ENTITY_SHADER_PARMS];
+		const int portalParm = shader->GetDirectPortalDistance() - EXP_REG_PARM0;	// expression register to shader parm index
+		if ( shader->GetDirectPortalDistance() >= 0 && portalParm >= 0 && portalParm + 1 < MAX_ENTITY_SHADER_PARMS ) {
+			memcpy( portalShaderParms, shaderParms, sizeof( portalShaderParms ) );
+			portalShaderParms[portalParm] = R_ScalePortalFadeDistance( shaderParms, portalParm, shaderParms[portalParm] );
+			portalShaderParms[portalParm + 1] = R_ScalePortalFadeDistance( shaderParms, portalParm, shaderParms[portalParm + 1] );
+			shaderParms = portalShaderParms;
+		}
 
 		shader->EvaluateRegisters( regs, shaderParms, tr.viewDef, renderEntity->referenceSound );
 
