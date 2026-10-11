@@ -1225,6 +1225,41 @@ void R_AddDrawSurf( const srfTriangles_t *tri, const viewEntity_t *space, const 
 
 /*
 ===============
+R_FlattenPortalSurface
+
+Game portal surfaces are recessed frames, but the view through a portal is only correct within
+the portal plane (the entity origin plane facing the entity x axis). Seen at an angle, the recess
+covers screen areas outside the portal opening, which then show a meaningless part of the
+destination view. Flatten the surface onto the portal plane, so it covers exactly the opening.
+===============
+*/
+static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri ) {
+	if ( !tri->verts ) {
+		return tri;
+	}
+
+	srfTriangles_t *newTri = (srfTriangles_t *)R_ClearedFrameAlloc( sizeof( *newTri ) );
+	newTri->numVerts = tri->numVerts;
+	newTri->numIndexes = tri->numIndexes;
+	newTri->indexes = tri->indexes;
+	newTri->verts = (idDrawVert *)R_FrameAlloc( tri->numVerts * sizeof( idDrawVert ) );
+	memcpy( newTri->verts, tri->verts, tri->numVerts * sizeof( idDrawVert ) );
+	for ( int i = 0 ; i < newTri->numVerts ; i++ ) {
+		newTri->verts[i].xyz.x = 0.0f;
+	}
+	newTri->bounds = tri->bounds;
+	newTri->bounds[0].x = newTri->bounds[1].x = 0.0f;
+
+	newTri->ambientCache = vertexCache.AllocFrameTemp( newTri->verts, newTri->numVerts * sizeof( idDrawVert ) );
+	// if we are out of vertex cache, draw the surface as it is
+	if ( !newTri->ambientCache ) {
+		return tri;
+	}
+	return newTri;
+}
+
+/*
+===============
 R_AddAmbientDrawsurfs
 
 Adds surfaces for the given viewEntity
@@ -1276,6 +1311,14 @@ static void R_AddAmbientDrawsurfs( viewEntity_t *vEntity ) {
 			continue;
 		}
 
+		// game portal surfaces are recessed frames that only show the destination from the front,
+		// seen from behind a few of their faces still face the view and would be drawn black
+		if ( shader->GetSubviewClass() == SC_PORTAL && shader->GetSort() == SS_SUBVIEW ) {
+			if ( ( tr.viewDef->renderView.vieworg - def->parms.origin ) * def->parms.axis[0] <= 0.0f ) {
+				continue;
+			}
+		}
+
 		// debugging tool to make sure we are have the correct pre-calculated bounds
 		if ( r_checkBounds.GetBool() ) {
 			int j, k;
@@ -1318,7 +1361,11 @@ static void R_AddAmbientDrawsurfs( viewEntity_t *vEntity ) {
 			}
 
 			// add the surface for drawing
-			R_AddDrawSurf( tri, vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
+			if ( shader->GetSubviewClass() == SC_PORTAL && shader->GetSort() == SS_SUBVIEW ) {
+				R_AddDrawSurf( R_FlattenPortalSurface( tri ), vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
+			} else {
+				R_AddDrawSurf( tri, vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
+			}
 
 			// ambientViewCount is used to allow light interactions to be rejected
 			// if the ambient surface isn't visible at all

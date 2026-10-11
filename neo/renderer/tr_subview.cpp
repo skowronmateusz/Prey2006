@@ -524,8 +524,9 @@ bool	R_GenerateSurfaceSubview( drawSurf_t *drawSurf ) {
 	// never recurse through a subview surface that we are
 	// already seeing through
 	for ( parms = tr.viewDef ; parms ; parms = parms->superView ) {
+		// (game portal surfaces get new flattened geometry for every view, so compare the material too)
 		if ( parms->subviewSurface
-			&& parms->subviewSurface->geo == drawSurf->geo
+			&& ( parms->subviewSurface->geo == drawSurf->geo || parms->subviewSurface->material == drawSurf->material )
 			&& parms->subviewSurface->space->entityDef == drawSurf->space->entityDef ) {
 			break;
 		}
