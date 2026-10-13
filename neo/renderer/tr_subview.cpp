@@ -786,16 +786,25 @@ bool R_GenerateSubViews( void ) {
 
 	// scan the surfaces until we either find a subview, or determine
 	// there are no more subview surfaces.
-	for ( i = 0 ; i < tr.viewDef->numDrawSurfs ; i++ ) {
-		drawSurf = tr.viewDef->drawSurfs[i];
-		shader = drawSurf->material;
+	// skybox views are generated first: subviews render straight into the framebuffer
+	// within their scissor rect, so a skybox view drawn after a game portal view
+	// would overwrite what is seen through the portal
+	for ( int pass = 0 ; pass < 2 ; pass++ ) {
+		for ( i = 0 ; i < tr.viewDef->numDrawSurfs ; i++ ) {
+			drawSurf = tr.viewDef->drawSurfs[i];
+			shader = drawSurf->material;
 
-		if ( !shader || !shader->HasSubview() ) {
-			continue;
-		}
+			if ( !shader || !shader->HasSubview() ) {
+				continue;
+			}
 
-		if ( R_GenerateSurfaceSubview( drawSurf ) ) {
-			subviews = true;
+			if ( ( shader->GetSubviewClass() == SC_PORTAL_SKYBOX ) != ( pass == 0 ) ) {
+				continue;
+			}
+
+			if ( R_GenerateSurfaceSubview( drawSurf ) ) {
+				subviews = true;
+			}
 		}
 	}
 
