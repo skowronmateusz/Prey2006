@@ -54,6 +54,10 @@ Compared to the [original repository](https://github.com/FriskTheFallenHuman/Pre
 - Savegames stay loadable when a `.gui` file changed since saving. GUI registers are restored by name instead of by position, so adding `anchor` to the HUD for widescreen no longer crashes when loading older savegames.
 - Fixed a one byte stack overflow in `idDeclManager::MakeNameCanonical()` for names that are too long, which aborted the game.
 
+### Player getting stuck
+
+- The player no longer gets stuck in walls, at curved wall/floor transitions or at railings in levels far from the map origin (e.g. The Old Tribes). The collision code computes Plücker coordinates in double precision again, as the original x87 builds effectively did; in single precision (x86_64, arm64) the rounding errors let the player bounding box slip into the geometry.
+
 ### macOS build
 
 - After linking, the executables and the game dylib are relinked against `@rpath` (`neo/CMakeModules/MacBundleLibs.cmake`), with `@executable_path/../Frameworks` first and the original library directories (e.g. Homebrew) as fallback. The built `prey06` and `gamearm64.dylib` can be copied into `Prey2006.app/Contents/MacOS` as they are and use the libraries in the app bundle, and they still run from `output/macosx`.

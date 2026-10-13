@@ -246,20 +246,23 @@ ID_INLINE void idPluecker::Zero( void ) {
 	p[0] = p[1] = p[2] = p[3] = p[4] = p[5] = 0.0f;
 }
 
+// The moments are differences of nearly equal products when the line is far from the origin.
+// Rounding each product to float loses enough precision there to break the collision tests,
+// so like the original x87 builds this computes the products in double precision.
 ID_INLINE void idPluecker::FromLine( const idVec3 &start, const idVec3 &end ) {
-	p[0] = start[0] * end[1] - end[0] * start[1];
-	p[1] = start[0] * end[2] - end[0] * start[2];
+	p[0] = (float)( (double)start[0] * end[1] - (double)end[0] * start[1] );
+	p[1] = (float)( (double)start[0] * end[2] - (double)end[0] * start[2] );
 	p[2] = start[0] - end[0];
-	p[3] = start[1] * end[2] - end[1] * start[2];
+	p[3] = (float)( (double)start[1] * end[2] - (double)end[1] * start[2] );
 	p[4] = start[2] - end[2];
 	p[5] = end[1] - start[1];
 }
 
 ID_INLINE void idPluecker::FromRay( const idVec3 &start, const idVec3 &dir ) {
-	p[0] = start[0] * dir[1] - dir[0] * start[1];
-	p[1] = start[0] * dir[2] - dir[0] * start[2];
+	p[0] = (float)( (double)start[0] * dir[1] - (double)dir[0] * start[1] );
+	p[1] = (float)( (double)start[0] * dir[2] - (double)dir[0] * start[2] );
 	p[2] = -dir[0];
-	p[3] = start[1] * dir[2] - dir[1] * start[2];
+	p[3] = (float)( (double)start[1] * dir[2] - (double)dir[1] * start[2] );
 	p[4] = -dir[2];
 	p[5] = dir[1];
 }
@@ -314,7 +317,9 @@ ID_INLINE void idPluecker::ToDir( idVec3 &dir ) const {
 }
 
 ID_INLINE float idPluecker::PermutedInnerProduct( const idPluecker &a ) const {
-	return p[0] * a.p[4] + p[1] * a.p[5] + p[2] * a.p[3] + p[4] * a.p[0] + p[5] * a.p[1] + p[3] * a.p[2];
+	// sum of large terms that mostly cancel out, see FromLine()
+	return (float)( (double)p[0] * a.p[4] + (double)p[1] * a.p[5] + (double)p[2] * a.p[3] +
+					(double)p[4] * a.p[0] + (double)p[5] * a.p[1] + (double)p[3] * a.p[2] );
 }
 
 ID_INLINE float idPluecker::Length( void ) const {
