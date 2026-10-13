@@ -23,6 +23,7 @@ include(TestBigEndian)
 include(GitBranch)
 include(GlobbedHeaders)
 include(PackagePk4)
+include(MacBundleLibs)
 
 option(ENGINE						"Build the main executable." ON)
 option(DEDICATED					"Build the dedicated server executable." ON)
@@ -1449,6 +1450,7 @@ if(ENGINE)
 		${sys_thirdparty_libs}
 		${sys_libs}
 	)
+	macos_bundle_relink(${ENGINE_BINARY})
 
 	if(NOT WIN32)
 		install(TARGETS ${ENGINE_BINARY}
@@ -1532,6 +1534,7 @@ if(DEDICATED)
 		${sys_thirdparty_libs}
 		${sys_libs}
 	)
+	macos_bundle_relink(${DEDICATED_BINARY})
 
 	if(NOT WIN32)
 		install(TARGETS ${DEDICATED_BINARY}
@@ -1665,6 +1668,7 @@ if(BASE AND NOT HARDLINK_GAME)
 	endif()
 	set_target_properties(Game${cpu_arch} PROPERTIES OUTPUT_NAME "game${cpu_arch}")
 	set_target_properties(Game${cpu_arch} PROPERTIES FOLDER "dlls")
+	macos_bundle_relink(Game${cpu_arch})
 
 	add_gamepak(GAME_TARGET Game${cpu_arch} $<TARGET_FILE:Game${cpu_arch}>)
 

@@ -54,6 +54,10 @@ Compared to the [original repository](https://github.com/FriskTheFallenHuman/Pre
 - Savegames stay loadable when a `.gui` file changed since saving. GUI registers are restored by name instead of by position, so adding `anchor` to the HUD for widescreen no longer crashes when loading older savegames.
 - Fixed a one byte stack overflow in `idDeclManager::MakeNameCanonical()` for names that are too long, which aborted the game.
 
+### macOS build
+
+- After linking, the executables and the game dylib are relinked against `@rpath` (`neo/CMakeModules/MacBundleLibs.cmake`), with `@executable_path/../Frameworks` first and the original library directories (e.g. Homebrew) as fallback. The built `prey06` and `gamearm64.dylib` can be copied into `Prey2006.app/Contents/MacOS` as they are and use the libraries in the app bundle, and they still run from `output/macosx`.
+
 ### File system
 
 - `pak007.pk4` (the port's widescreen HUD, menus, loading screen and other fixed assets, next to the executable) now takes precedence over all other pk4s of the base game. Before, the directory of the executable was searched last when the game data was in another directory (for example `~/.local/share/prey06/base` on macOS/Linux), so the original files in `pak000.pk4` were used and the HUD was stretched. Loose files in the search directories and mods (`fs_game`) can still override it.
