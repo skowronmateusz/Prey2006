@@ -1,0 +1,59 @@
+# Files of base/ (pak007.pk4) that go into the macOS release, see pak007.py.
+#
+#   copy  <path> [<source>]  shipped as it is (own work of the port)
+#   patch <path>             modified retail file, only a patch against the player's copy is shipped
+#
+# Not listed (never released): the hi-res loading screen and the intro videos (artwork of
+# the game), the tutorial maps (Prey SDK), the material editor files and megaTexture.vfp
+# (not used on macOS, unclear origin), the console textures (replaced by our own ones) and
+# default.cfg (an empty placeholder, it would replace the key bindings of the game).
+
+copy  guis/anchors.guifragment
+copy  masterservers.lst
+copy  maps/testmaps/test_box.map
+copy  textures/black.tga
+copy  textures/gfx/console1.tga        release/macos/assets/textures/gfx/console1.tga
+copy  textures/gfx/console2.tga        release/macos/assets/textures/gfx/console2.tga
+
+patch guis/cursor.gui
+patch guis/hud.gui
+patch guis/hud/hud_ammobars.guifragment
+patch guis/hud/hud_damageindictor.guifragment
+patch guis/hud/hud_devtools.guifragment
+patch guis/hud/hud_healthbars.guifragment
+patch guis/hud/hud_itempickups.guifragment
+patch guis/hud/hud_lighter.guifragment
+patch guis/hud/hud_mpmisc.guifragment
+patch guis/hud/hud_mpreadytip.guifragment
+patch guis/hud/hud_mpvotetips.guifragment
+patch guis/hud/hud_mpweaponswitch.guifragment
+patch guis/hud/hud_playeridentity.guifragment
+patch guis/hud/hud_progressbar.guifragment
+patch guis/hud/hud_shuttletips.guifragment
+patch guis/hud/hud_subtitles.guifragment
+patch guis/hud/hud_tips.guifragment
+patch guis/hud/hud_weaponswitchicons.guifragment
+patch guis/mainmenu.gui
+patch guis/mainmenu/mainmenu_credits.guifragment
+patch guis/mainmenu/mainmenu_exit.guifragment
+patch guis/mainmenu/mainmenu_loadgame.guifragment
+patch guis/mainmenu/mainmenu_mods.guifragment
+patch guis/mainmenu/mainmenu_multiplayer.guifragment
+patch guis/mainmenu/mainmenu_newgame.guifragment
+patch guis/mainmenu/mainmenu_options.guifragment
+patch guis/mainmenu/mainmenu_overlays.guifragment
+patch guis/mainmenu/mainmenu_quitgame.guifragment
+patch guis/mainmenu/mainmenu_savegame.guifragment
+patch guis/map/loading.gui
+patch guis/mphud.gui
+patch guis/mpmain.gui
+patch guis/mpmsgmode.gui
+patch guis/msg.gui
+patch guis/netmenu.gui
+patch guis/restart.gui
+patch guis/save.gui
+patch guis/subtitles.gui
+patch guis/vehicles/shuttlehud.gui
+patch guis/weapons/sniperoverlay.gui
+patch materials/gfx.mtr
+patch materials/video.mtr

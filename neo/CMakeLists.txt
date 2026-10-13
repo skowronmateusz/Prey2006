@@ -426,8 +426,10 @@ else()
 	message(FATAL_ERROR "Unsupported compiler")
 endif()
 
-# Drop the binaries in the output/${os} folder
-set(OUTPUT_FOLDER ${CMAKE_SOURCE_DIR}/../output/${os})
+# Drop the binaries in the output/${os} folder (can be changed with -DOUTPUT_FOLDER=...)
+if(NOT OUTPUT_FOLDER)
+	set(OUTPUT_FOLDER ${CMAKE_SOURCE_DIR}/../output/${os})
+endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG ${CMAKE_C_FLAGS_DEBUG})
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO ${CMAKE_C_FLAGS_RELWITHDEBINFO})
