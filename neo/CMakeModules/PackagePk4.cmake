@@ -74,6 +74,11 @@ foreach(_f IN LISTS _base_files)
 		continue()
 	endif()
 	file(RELATIVE_PATH _rel "@_src_base@" "${_f}")
+	# base/default.cfg is an empty placeholder, pak007.pk4 overrides the retail pk4s
+	# and it would replace the default key bindings of the game
+	if(_rel STREQUAL "default.cfg")
+		continue()
+	endif()
 	list(APPEND _base_rel_files "${_rel}")
 endforeach()
  
