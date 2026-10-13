@@ -54,9 +54,9 @@ Compared to the [original repository](https://github.com/FriskTheFallenHuman/Pre
 - Savegames stay loadable when a `.gui` file changed since saving. GUI registers are restored by name instead of by position, so adding `anchor` to the HUD for widescreen no longer crashes when loading older savegames.
 - Fixed a one byte stack overflow in `idDeclManager::MakeNameCanonical()` for names that are too long, which aborted the game.
 
-### Known issue: HUD and menu files being overridden
+### File system
 
-The widescreen HUD, menus and loading screen are in `pak007.pk4` next to the executable. That directory is searched after `fs_basepath` / `fs_savepath`, so when the game data is in another directory (for example `~/.local/share/prey06/base` on macOS/Linux) the original files in `pak000.pk4` take precedence and the HUD is stretched. As a workaround, put `pak007.pk4` (or a symlink to it) into the same `base` directory as the game's `pak00x.pk4` files.
+- `pak007.pk4` (the port's widescreen HUD, menus, loading screen and other fixed assets, next to the executable) now takes precedence over all other pk4s of the base game. Before, the directory of the executable was searched last when the game data was in another directory (for example `~/.local/share/prey06/base` on macOS/Linux), so the original files in `pak000.pk4` were used and the HUD was stretched. Loose files in the search directories and mods (`fs_game`) can still override it.
 
 ## Compiling
 

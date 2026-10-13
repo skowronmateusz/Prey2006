@@ -2230,6 +2230,48 @@ void idFileSystemLocal::SetupGameDirectories( const char *gameName ) {
 }
 
 /*
+================
+PrioritizeEngineAssetPaks
+
+pak007.pk4 holds the source port's fixed/widescreen guis and other assets and must
+override the retail pk4s. It's next to the executable, which is usually fs_basepath
+(lowest priority), while the game data may be in fs_savepath, so move it in front of
+all other pk4s. Loose files in the search directories can still override it.
+================
+*/
+#define ENGINE_ASSETS_PAK "pak007.pk4"
+
+static void PrioritizeEngineAssetPaks( searchpath_t *&searchPaths ) {
+	searchpath_t *enginePaks = NULL;
+	searchpath_t **enginePaksTail = &enginePaks;
+
+	// unlink the engine asset paks, keeping their order
+	searchpath_t **link = &searchPaths;
+	while ( *link ) {
+		searchpath_t *sp = *link;
+		if ( sp->pack && idStr( sp->pack->pakFilename ).StripPath().Icmp( ENGINE_ASSETS_PAK ) == 0 ) {
+			*link = sp->next;
+			sp->next = NULL;
+			*enginePaksTail = sp;
+			enginePaksTail = &sp->next;
+		} else {
+			link = &sp->next;
+		}
+	}
+	if ( !enginePaks ) {
+		return;
+	}
+
+	// and insert them before the first pk4
+	link = &searchPaths;
+	while ( *link && !( *link )->pack ) {
+		link = &( *link )->next;
+	}
+	*enginePaksTail = *link;
+	*link = enginePaks;
+}
+
+/*
 ===============
 idFileSystemLocal::FollowDependencies
 ===============
@@ -2284,6 +2326,8 @@ void idFileSystemLocal::Startup( void ) {
 	}
 
 	SetupGameDirectories( BASE_GAMEDIR );
+	// before the mod directories are added, so mods can still override the engine assets
+	PrioritizeEngineAssetPaks( searchPaths );
 
 	// fs_game_base override
 	if ( fs_game_base.GetString()[0] &&
