@@ -23,7 +23,7 @@ jobs:
     name: Release tools tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run tests
         run: python3 -m unittest discover -s release/macos/tests -v
@@ -33,7 +33,7 @@ jobs:
     needs: tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # tags for the version
 
@@ -44,7 +44,7 @@ jobs:
           done
 
       - name: Restore SDL2 and OpenAL Soft
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-release/macos/deps
           key: macos-deps-11.0-${{ hashFiles('neo/libs/SDL2/**', 'neo/libs/OpenalSoft/**', 'release/macos/build_release.sh') }}
@@ -64,7 +64,7 @@ jobs:
         run: release/macos/build_release.sh "${{ steps.version.outputs.version }}"
 
       - name: Upload the disk image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prey2006-${{ steps.version.outputs.version }}-macos-arm64
           path: |
@@ -82,7 +82,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifact
           merge-multiple: true
