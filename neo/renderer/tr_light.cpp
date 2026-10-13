@@ -1231,9 +1231,16 @@ Game portal surfaces are recessed frames, but the view through a portal is only 
 the portal plane (the entity origin plane facing the entity x axis). Seen at an angle, the recess
 covers screen areas outside the portal opening, which then show a meaningless part of the
 destination view. Flatten the surface onto the portal plane, so it covers exactly the opening.
+
+The player is only teleported when its origin crosses the portal plane, so right before that
+the view gets closer to the plane than the near clip distance and the surface would be clipped
+away, showing what is behind the source portal. Then the vertices are pushed away from the view
+origin, which keeps their screen positions but moves them past the near clip plane, and also past
+twice the near clip distance, the depth of anything closer would hide the weapon (drawn with
+a depth range of 0 - 0.5).
 ===============
 */
-static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri ) {
+static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri, const viewEntity_t *vEntity ) {
 	if ( !tri->verts ) {
 		return tri;
 	}
@@ -1249,6 +1256,19 @@ static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri )
 	}
 	newTri->bounds = tri->bounds;
 	newTri->bounds[0].x = newTri->bounds[1].x = 0.0f;
+
+	idVec3 localViewOrigin;
+	R_GlobalPointToLocal( vEntity->modelMatrix, tr.viewDef->renderView.vieworg, localViewOrigin );
+	const float minDist = 2.0f * r_znear.GetFloat() + 2.0f;
+	if ( localViewOrigin.x > 0.0f && localViewOrigin.x < minDist ) {
+		const float scale = minDist / Max( localViewOrigin.x, 0.01f );
+		newTri->bounds.Clear();
+		for ( int i = 0 ; i < newTri->numVerts ; i++ ) {
+			idVec3 &xyz = newTri->verts[i].xyz;
+			xyz = localViewOrigin + ( xyz - localViewOrigin ) * scale;
+			newTri->bounds.AddPoint( xyz );
+		}
+	}
 
 	newTri->ambientCache = vertexCache.AllocFrameTemp( newTri->verts, newTri->numVerts * sizeof( idDrawVert ) );
 	// if we are out of vertex cache, draw the surface as it is
@@ -1362,7 +1382,7 @@ static void R_AddAmbientDrawsurfs( viewEntity_t *vEntity ) {
 
 			// add the surface for drawing
 			if ( shader->GetSubviewClass() == SC_PORTAL && shader->GetSort() == SS_SUBVIEW ) {
-				R_AddDrawSurf( R_FlattenPortalSurface( tri ), vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
+				R_AddDrawSurf( R_FlattenPortalSurface( tri, vEntity ), vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
 			} else {
 				R_AddDrawSurf( tri, vEntity, &vEntity->entityDef->parms, shader, vEntity->scissorRect );
 			}

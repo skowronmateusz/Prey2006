@@ -41,6 +41,8 @@ Compared to the [original repository](https://github.com/FriskTheFallenHuman/Pre
 - Portal surfaces are drawn as flat windows on the portal plane. They are recessed frames, which caused a dark wedge next to the portal edge and black cones at grazing angles.
 - Portals seen from behind and portals behind a destination portal are no longer rendered.
 - The player's shadow stays hidden in portal views.
+- The skybox seen next to a portal no longer covers the view through it: skybox views are now rendered before portal views, which draw over them where they overlap on screen.
+- The view through a portal no longer disappears right before walking through it. The player is teleported when its origin crosses the portal plane, so the view gets closer to the plane than the near clip distance and the portal surface was clipped away, showing what is behind the source portal. The portal surface is now pushed away from the view (keeping its screen position), which also keeps the weapon visible.
 - The `directportal` distance cull reads the correct shader parm (parm5 instead of parm6).
 - New cvars: `r_portalFadeScale` (default 0 = no fade) scales the default entity def fade distances, `r_portalMapFadeScale` (default 1) scales the fade distances set by maps, and `r_portalMaxDepth` limits portals seen through portals.
 
