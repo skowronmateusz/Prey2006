@@ -1613,7 +1613,8 @@ void idDeclManagerLocal::MakeNameCanonical( const char *name, char *result, int 
 	int i, lastDot;
 
 	lastDot = -1;
-	for ( i = 0; i < maxLength && name[i] != '\0'; i++ ) {
+	// maxLength - 1 leaves room for the terminating '\0'
+	for ( i = 0; i < maxLength - 1 && name[i] != '\0'; i++ ) {
 		int c = name[i];
 		if ( c == '\\' ) {
 			result[i] = '/';

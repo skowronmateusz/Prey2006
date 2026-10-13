@@ -388,7 +388,50 @@ void idRegisterList::WriteToSaveGame( idFile *savefile ) {
 
 /*
 ====================
+SkipSaveGameWinVar
+
+skips the data written by idWinVar::WriteToSaveGame() for a register of the given type
+====================
+*/
+static bool SkipSaveGameWinVar( idFile *savefile, int type ) {
+	bool eval;
+	savefile->Read( &eval, sizeof( eval ) );
+
+	int size;
+	switch ( type ) {
+		case idRegister::VEC4:		size = sizeof( idVec4 ); break;
+		case idRegister::FLOAT:		size = sizeof( float ); break;
+		case idRegister::BOOL:		size = sizeof( bool ); break;
+		case idRegister::INT:		size = sizeof( int ); break;
+		case idRegister::VEC2:		size = sizeof( idVec2 ); break;
+		case idRegister::VEC3:		size = sizeof( idVec3 ); break;
+		case idRegister::RECTANGLE:	size = sizeof( idRectangle ); break;
+		case idRegister::STRING:
+			savefile->Read( &size, sizeof( size ) );
+			if ( size < 0 || size > MAX_STRING_CHARS * 16 ) {
+				return false;
+			}
+			break;
+		default:
+			return false;
+	}
+
+	// read instead of seek, not every savegame file type supports seeking
+	byte buf[256];
+	while ( size > 0 ) {
+		int chunk = Min( size, (int)sizeof( buf ) );
+		savefile->Read( buf, chunk );
+		size -= chunk;
+	}
+	return true;
+}
+
+/*
+====================
 idRegisterList::ReadFromSaveGame
+
+registers are matched by name, so savegames stay loadable when the .gui file
+gained or lost registers since the game was saved (e.g. "anchor" added for widescreen HUDs)
 ====================
 */
 void idRegisterList::ReadFromSaveGame( idFile *savefile ) {
@@ -396,6 +439,38 @@ void idRegisterList::ReadFromSaveGame( idFile *savefile ) {
 
 	savefile->Read( &num, sizeof( num ) );
 	for ( i = 0; i < num; i++ ) {
-		regs[i]->ReadFromSaveGame( savefile );
+		bool			enabled;
+		short			type;
+		int				regCount;
+		unsigned short	savedRegs[4];
+		int				len;
+		idStr			name;
+
+		savefile->Read( &enabled, sizeof( enabled ) );
+		savefile->Read( &type, sizeof( type ) );
+		savefile->Read( &regCount, sizeof( regCount ) );
+		savefile->Read( &savedRegs[0], sizeof( savedRegs ) );
+
+		savefile->Read( &len, sizeof( len ) );
+		if ( len < 0 || len >= MAX_STRING_CHARS ) {
+			common->Error( "idRegisterList::ReadFromSaveGame: bad register name length %d (gui doesn't match savegame)", len );
+		}
+		name.Fill( ' ', len );
+		if ( len > 0 ) {
+			savefile->Read( &name[0], len );
+		}
+
+		// regCount and regs are only set when parsing the gui, so the freshly parsed values are kept
+		// (the saved indices are wrong if the gui changed since the game was saved)
+		idRegister *reg = ( i < regs.Num() && regs[i]->name.Icmp( name ) == 0 ) ? regs[i] : FindReg( name );
+		if ( reg && reg->type == type ) {
+			reg->enabled = enabled;
+			reg->var->ReadFromSaveGame( savefile );
+		} else {
+			common->DPrintf( "idRegisterList::ReadFromSaveGame: skipping register '%s' not present in gui\n", name.c_str() );
+			if ( !SkipSaveGameWinVar( savefile, type ) ) {
+				common->Error( "idRegisterList::ReadFromSaveGame: can't skip register '%s' of type %d", name.c_str(), type );
+			}
+		}
 	}
 }
