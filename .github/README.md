@@ -30,6 +30,34 @@ and some adjustments to the Prey 2006 SDK code.
 
 This runs in a semi vanilla Dhewm3 v1.5.4 fork that specifically removes imgui, soft particles and joystick support for the time being.
 
+## Changes in this fork
+
+Compared to the [original repository](https://github.com/FriskTheFallenHuman/Prey2006):
+
+### Game portals
+
+- The view through a portal now has proper parallax: the portal camera mirrors the viewer's offset from the source portal, so the view changes when moving towards or away from the portal (it only rotated before).
+- Geometry between the portal camera and the destination is clipped away, including opaque surfaces.
+- Portal surfaces are drawn as flat windows on the portal plane. They are recessed frames, which caused a dark wedge next to the portal edge and black cones at grazing angles.
+- Portals seen from behind and portals behind a destination portal are no longer rendered.
+- The player's shadow stays hidden in portal views.
+- The `directportal` distance cull reads the correct shader parm (parm5 instead of parm6).
+- New cvars: `r_portalFadeScale` (default 0 = no fade) scales the default entity def fade distances, `r_portalMapFadeScale` (default 1) scales the fade distances set by maps, and `r_portalMaxDepth` limits portals seen through portals.
+
+### Widescreen / ultrawide
+
+- The level loading screen shows the 4:3 level image completely, centered with black bars, instead of a cropped part of it stretched over the screen. The level title and progress bar are centered correctly.
+- For ultrawide monitors, set `r_aspectRatio -1` (auto) so the horizontal FOV widens with the window instead of the image being stretched. The HUD keeps its aspect ratio with `gui_hudAdjustAspect 1` (default).
+
+### Savegames
+
+- Savegames stay loadable when a `.gui` file changed since saving. GUI registers are restored by name instead of by position, so adding `anchor` to the HUD for widescreen no longer crashes when loading older savegames.
+- Fixed a one byte stack overflow in `idDeclManager::MakeNameCanonical()` for names that are too long, which aborted the game.
+
+### Known issue: HUD and menu files being overridden
+
+The widescreen HUD, menus and loading screen are in `pak007.pk4` next to the executable. That directory is searched after `fs_basepath` / `fs_savepath`, so when the game data is in another directory (for example `~/.local/share/prey06/base` on macOS/Linux) the original files in `pak000.pk4` take precedence and the HUD is stretched. As a workaround, put `pak007.pk4` (or a symlink to it) into the same `base` directory as the game's `pak00x.pk4` files.
+
 ## Compiling
 
 For Windows:
