@@ -1,76 +1,99 @@
-name: macOS Builds (arm64)
+name: macOS (arm64)
+
+# Tests and builds the macOS release (release/macos). Pushing a tag macos-<version>
+# (e.g. macos-1.5.4-2) publishes a GitHub release with the disk image.
+# The release contains no files of the retail game: the patches of pak007.pk4 are
+# committed in release/macos/patches, the CI never needs the game.
 
 on:
   push:
     branches:
-      - "main"
-    paths-ignore:
-      - .github/workflows/FreeBSD.yml
-      - .github/workflows/Linux.yml
-      - .github/workflows/LinuxARM64.yml
-      - .github/workflows/Windows.yml
+      - main
+    tags:
+      - 'macos-*'
   pull_request:
-    types: [edited, opened, synchronize]
-    paths-ignore:
-      - .github/workflows/FreeBSD.yml
-      - .github/workflows/Linux.yml
-      - .github/workflows/LinuxARM64.yml
-      - .github/workflows/Windows.yml
   workflow_dispatch:
-  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
-  build:
-    name: macOS (arm64)
+  tests:
+    name: Release tools tests
     runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Run tests
+        run: python3 -m unittest discover -s release/macos/tests -v
+
+  build:
+    name: Build Prey2006.app and the disk image
+    needs: tests
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0   # tags for the version
 
-      - name: Install dependencies
+      - name: Install build tools
         run: |
-          brew install sdl2 openal-soft ninja ccache pkg-config
+          for tool in cmake ninja pkg-config; do
+            command -v $tool > /dev/null || brew install $tool
+          done
 
-      - name: Ensure ccache dir exists and init
-        run: |
-          mkdir -p ~/.ccache
-          ccache --max-size=10G || true
-
-      - name: Restore ccache
+      - name: Restore SDL2 and OpenAL Soft
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-arm64-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-arm64-
-            ${{ runner.os }}-ccache-
+          path: build-release/macos/deps
+          key: macos-deps-11.0-${{ hashFiles('neo/libs/SDL2/**', 'neo/libs/OpenalSoft/**', 'release/macos/build_release.sh') }}
 
-      - name: Build the engine
+      - name: Version
+        id: version
         run: |
-          set -eux
-          rm -rf build
-          mkdir -p build
-          cd build
-          OPENAL_PREFIX="$(brew --prefix openal-soft)"
-          cmake -G Ninja \
-            -DDEDICATED=ON \
-            -DOPENAL_INCLUDE_DIR="${OPENAL_PREFIX}/include" \
-            -DOPENAL_LIBRARY="${OPENAL_PREFIX}/lib/libopenal.dylib" \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ../neo/
-          ninja
+          if [[ "$GITHUB_REF" == refs/tags/macos-* ]]; then
+            version="${GITHUB_REF_NAME#macos-}"
+          else
+            version="$(git describe --tags --always | sed 's/^v//')"
+          fi
+          echo "Version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Chmod game executables
-        run: |
-          chmod +x "${{ github.workspace }}/output/macosx/prey06"
-          chmod +x "${{ github.workspace }}/output/macosx/prey06ded"
+      - name: Build
+        run: release/macos/build_release.sh "${{ steps.version.outputs.version }}"
 
-      - name: Artifacts
+      - name: Upload the disk image
         uses: actions/upload-artifact@v4
         with:
-          name: prey2006-macos-arm64
-          path: output/macosx/
-          compression-level: 6
+          name: prey2006-${{ steps.version.outputs.version }}-macos-arm64
+          path: |
+            build-release/macos/*.dmg
+            build-release/macos/*.dmg.sha256
+            build-release/macos/release-notes.md
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/macos-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifact
+          merge-multiple: true
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#macos-}"
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Prey2006 $version for macOS" \
+            --notes-file artifact/release-notes.md \
+            artifact/*.dmg artifact/*.dmg.sha256

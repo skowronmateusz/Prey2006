@@ -187,5 +187,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: prey2006-linux-${{ matrix.arch }}
-          path: output/linux/
+          # without pak007.pk4: it contains files of the retail game (see release/macos/README.md)
+          path: |
+            output/linux/
+            !output/linux/base/pak007.pk4
           compression-level: 6
