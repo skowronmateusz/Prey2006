@@ -31,6 +31,8 @@ Compared to the original repository:
 - The player's shadow stays hidden in portal views.
 - The skybox seen next to a portal no longer covers the view through it: skybox views are now rendered before portal views, which draw over them where they overlap on screen.
 - The view through a portal no longer disappears right before walking through it. The player is teleported when its origin crosses the portal plane, so the view gets closer to the plane than the near clip distance and the portal surface was clipped away, showing what is behind the source portal. The portal surface is now pushed away from the view (keeping its screen position), which also keeps the weapon visible.
+- The view through a portal is also kept when the view is on or slightly behind the portal plane without the player being teleported (e.g. right after coming out of the other portal and turning around).
+- The frame in which the player walks through a portal is drawn from the destination. The player view was calculated before the portal teleported the player, so that frame showed what is behind the source portal.
 - The `directportal` distance cull reads the correct shader parm (parm5 instead of parm6).
 - New cvars: `r_portalFadeScale` (default 0 = no fade) scales the default entity def fade distances, `r_portalMapFadeScale` (default 1) scales the fade distances set by maps, and `r_portalMaxDepth` limits portals seen through portals.
 

@@ -1238,12 +1238,21 @@ away, showing what is behind the source portal. Then the vertices are pushed awa
 origin, which keeps their screen positions but moves them past the near clip plane, and also past
 twice the near clip distance, the depth of anything closer would hide the weapon (drawn with
 a depth range of 0 - 0.5).
+
+The view can also be on or slightly behind the portal plane without the player being teleported
+(e.g. right after coming out of the other portal), then the surface is moved to a parallel plane
+just behind the view origin, so the destination is seen where the view looks into the portal.
 ===============
 */
 static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri, const viewEntity_t *vEntity ) {
 	if ( !tri->verts ) {
 		return tri;
 	}
+
+	idVec3 localViewOrigin;
+	R_GlobalPointToLocal( vEntity->modelMatrix, tr.viewDef->renderView.vieworg, localViewOrigin );
+	const float planeX = Min( 0.0f, localViewOrigin.x - 0.01f );
+	const float minDist = 2.0f * r_znear.GetFloat() + 2.0f;
 
 	srfTriangles_t *newTri = (srfTriangles_t *)R_ClearedFrameAlloc( sizeof( *newTri ) );
 	newTri->numVerts = tri->numVerts;
@@ -1252,16 +1261,13 @@ static const srfTriangles_t *R_FlattenPortalSurface( const srfTriangles_t *tri, 
 	newTri->verts = (idDrawVert *)R_FrameAlloc( tri->numVerts * sizeof( idDrawVert ) );
 	memcpy( newTri->verts, tri->verts, tri->numVerts * sizeof( idDrawVert ) );
 	for ( int i = 0 ; i < newTri->numVerts ; i++ ) {
-		newTri->verts[i].xyz.x = 0.0f;
+		newTri->verts[i].xyz.x = planeX;
 	}
 	newTri->bounds = tri->bounds;
-	newTri->bounds[0].x = newTri->bounds[1].x = 0.0f;
+	newTri->bounds[0].x = newTri->bounds[1].x = planeX;
 
-	idVec3 localViewOrigin;
-	R_GlobalPointToLocal( vEntity->modelMatrix, tr.viewDef->renderView.vieworg, localViewOrigin );
-	const float minDist = 2.0f * r_znear.GetFloat() + 2.0f;
-	if ( localViewOrigin.x > 0.0f && localViewOrigin.x < minDist ) {
-		const float scale = minDist / Max( localViewOrigin.x, 0.01f );
+	if ( localViewOrigin.x - planeX < minDist ) {
+		const float scale = minDist / ( localViewOrigin.x - planeX );
 		newTri->bounds.Clear();
 		for ( int i = 0 ; i < newTri->numVerts ; i++ ) {
 			idVec3 &xyz = newTri->verts[i].xyz;
@@ -1334,7 +1340,7 @@ static void R_AddAmbientDrawsurfs( viewEntity_t *vEntity ) {
 		// game portal surfaces are recessed frames that only show the destination from the front,
 		// seen from behind a few of their faces still face the view and would be drawn black
 		if ( shader->GetSubviewClass() == SC_PORTAL && shader->GetSort() == SS_SUBVIEW ) {
-			if ( ( tr.viewDef->renderView.vieworg - def->parms.origin ) * def->parms.axis[0] <= 0.0f ) {
+			if ( !R_ViewSeesGamePortal( def->parms, tri->bounds ) ) {
 				continue;
 			}
 		}

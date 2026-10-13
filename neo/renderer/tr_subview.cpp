@@ -145,6 +145,32 @@ bool R_ViewSuppressesShadow( int suppressShadowInViewID ) {
 
 /*
 =========================
+R_ViewSeesGamePortal
+
+Game portals are only seen from the front of the portal plane (the entity origin plane facing
+the entity x axis). The player is teleported when its origin crosses the plane, but if it was not
+near the portal yet at that moment it is not teleported and the view can stay slightly behind the
+plane, the destination is still seen then when the view is within the portal opening
+=========================
+*/
+static const float PORTAL_BEHIND_VIEW_DISTANCE = 1.0f;
+
+bool R_ViewSeesGamePortal( const renderEntity_t &parms, const idBounds &localBounds ) {
+	const idVec3 delta = tr.viewDef->renderView.vieworg - parms.origin;
+	const float dist = delta * parms.axis[0];
+	if ( dist > 0.0f ) {
+		return true;
+	}
+	if ( dist <= -PORTAL_BEHIND_VIEW_DISTANCE ) {
+		return false;
+	}
+	const float y = delta * parms.axis[1];
+	const float z = delta * parms.axis[2];
+	return y >= localBounds[0].y && y <= localBounds[1].y && z >= localBounds[0].z && z <= localBounds[1].z;
+}
+
+/*
+=========================
 R_PreciseCullSurface
 
 Check the surface for visibility on a per-triangle basis
@@ -616,7 +642,7 @@ bool	R_GenerateSurfaceSubview( drawSurf_t *drawSurf ) {
 			// game portals are only visible from the front, their surfaces are recessed
 			// so a few of their triangles can still face the view from behind
 			const renderEntity_t &portalParms = drawSurf->space->entityDef->parms;
-			if ( ( tr.viewDef->renderView.vieworg - portalParms.origin ) * portalParms.axis[0] <= 0.0f ) {
+			if ( ( tr.viewDef->renderView.vieworg - portalParms.origin ) * portalParms.axis[0] <= -PORTAL_BEHIND_VIEW_DISTANCE ) {
 				return false;
 			}
 

@@ -913,6 +913,11 @@ bool hhPortal::PortalTeleport( idEntity *ent, const idVec3 &origin, const idMat3
 		if (player->GetPhysics() && player->GetPhysics()->IsType(hhPhysics_Player::Type)) {
 			static_cast<hhPhysics_Player *>(player->GetPhysics())->CheckWallWalk( true );
 		}
+
+		// the player view of this frame was calculated before the portal thinks, from behind the
+		// source portal, recalculate it so the frame of the teleport is not drawn from there
+		player->CalculateFirstPersonView();
+		player->CalculateRenderView();
 	}
 
 	// Sound issues

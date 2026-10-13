@@ -1563,6 +1563,7 @@ SUBVIEW
 bool	R_PreciseCullSurface( const drawSurf_t *drawSurf, idBounds &ndcBounds );
 float	R_ScalePortalFadeDistance( const float *shaderParms, int parm, float distance );
 bool	R_ViewSuppressesShadow( int suppressShadowInViewID );
+bool	R_ViewSeesGamePortal( const renderEntity_t &parms, const idBounds &localBounds );
 bool	R_GenerateSubViews( void );
 
 /*
