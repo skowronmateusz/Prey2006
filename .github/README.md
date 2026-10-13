@@ -16,7 +16,7 @@ On the first start the app creates `~/.local/share/prey06/base/pak007.pk4` with 
 
 Savegames are stored in `~/.local/share/prey06/base`, the configuration in `~/.config/prey06/base`.
 
-Building the release: [release/macos/README.md](../release/macos/README.md).
+Building and publishing the release (also done by GitHub Actions for tags `macos-<version>`): [release/macos/README.md](../release/macos/README.md).
 
 ## Changes
 

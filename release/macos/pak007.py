@@ -8,22 +8,27 @@ in pak000.pk4. Releases must not contain them, so they ship as binary patches
 (BSDIFF40, applied with the bspatch of macOS) against the files of the player's
 own copy of the game, see install_assets.sh.
 
-pak007.manifest says which files of base/ go into the release:
-	copy  <path>            the file is shipped as it is (own work of the port)
-	copy  <path> <source>   same, but taken from <source> (relative to the repo)
-	patch <path>            only a patch from the retail file to base/<path> is shipped
-Everything else in base/ is not released (see the "extras" command).
+pak007.manifest classifies every file of base/:
+	copy    <path> [<source>]  shipped as it is (own work of the port), optionally
+	                           taken from <source> (relative to the repo) instead
+	patch   <path>             only a patch from the retail file to base/<path> is shipped
+	exclude <pattern>          never released (fnmatch pattern, '?' for spaces)
+
+The patches are committed in release/macos/patches, so the release can be built
+without the retail game (on CI). Only creating them needs the retail pk4s.
 
 Commands:
-	payload  build the release payload (files, patches, pak007.list)
-	extras   pack the files of base/ that are not released into a pk4
+	patches  (re)create the patches from the retail pk4s, after changing a patched file
+	check    check that the manifest covers base/ and the patches are up to date
+	payload  build the payload of the app (files, patches, pak007.list)
+	extras   pack the excluded files of base/ into a pk4 (for a local installation)
 	verify   check that a directory doesn't contain files of the retail game
 """
 
 import argparse
 import bz2
 import difflib
-import glob
+import fnmatch
 import hashlib
 import os
 import shutil
@@ -34,24 +39,69 @@ import tempfile
 import zipfile
 
 RETAIL_PAKS = ['pak000.pk4', 'pak001.pk4', 'pak002.pk4', 'pak003.pk4', 'pak004.pk4']
+PATCH_LIST = 'patches.list'
+
+# empty placeholder, it would replace the key bindings of the game (not even in extras)
+NEVER_PACKED = {'default.cfg'}
+
+
+class Error(Exception):
+	pass
 
 
 def md5(data):
 	return hashlib.md5(data).hexdigest()
 
 
-def read_manifest(path):
-	entries = []
-	with open(path) as f:
-		for num, line in enumerate(f, 1):
-			line = line.split('#', 1)[0].strip()
-			if not line:
-				continue
-			parts = line.split()
-			if parts[0] not in ('copy', 'patch') or len(parts) not in (2, 3) or (parts[0] == 'patch' and len(parts) != 2):
-				sys.exit('%s:%d: invalid line: %s' % (path, num, line))
-			entries.append((parts[0], parts[1], parts[2] if len(parts) == 3 else None))
-	return entries
+def read_file(path):
+	with open(path, 'rb') as f:
+		return f.read()
+
+
+def write_file(path, data):
+	os.makedirs(os.path.dirname(path), exist_ok=True)
+	with open(path, 'wb') as f:
+		f.write(data)
+
+
+class Manifest:
+	def __init__(self, path):
+		self.path = path
+		self.copies = []	# (path, source or None)
+		self.patches = []	# path
+		self.excludes = []	# pattern
+		with open(path) as f:
+			for num, line in enumerate(f, 1):
+				line = line.split('#', 1)[0].strip()
+				if not line:
+					continue
+				parts = line.split()
+				kind = parts[0]
+				if kind == 'copy' and len(parts) in (2, 3):
+					self.copies.append((parts[1], parts[2] if len(parts) == 3 else None))
+				elif kind == 'patch' and len(parts) == 2:
+					self.patches.append(parts[1])
+				elif kind == 'exclude' and len(parts) == 2:
+					self.excludes.append(parts[1])
+				else:
+					raise Error('%s:%d: invalid line: %s' % (path, num, line))
+
+	def released(self):
+		return set(p.lower() for p, _ in self.copies) | set(p.lower() for p in self.patches)
+
+	def is_excluded(self, path):
+		return any(fnmatch.fnmatchcase(path, pattern) for pattern in self.excludes)
+
+
+def base_files(repo):
+	"""Relative paths of all files in base/."""
+	base = os.path.join(repo, 'base')
+	result = []
+	for root, _, names in os.walk(base):
+		for n in names:
+			if n != '.DS_Store':
+				result.append(os.path.relpath(os.path.join(root, n), base).replace(os.sep, '/'))
+	return sorted(result)
 
 
 class RetailGame:
@@ -62,7 +112,7 @@ class RetailGame:
 		for name in RETAIL_PAKS:
 			path = os.path.join(base_dir, name)
 			if not os.path.isfile(path):
-				sys.exit('retail pk4 not found: %s' % path)
+				raise Error('retail pk4 not found: %s (set --retail)' % path)
 			self.paks.append((name, zipfile.ZipFile(path)))
 		self.index = {}
 		for name, z in self.paks:
@@ -73,9 +123,9 @@ class RetailGame:
 	def read(self, path):
 		hit = self.index.get(path.lower())
 		if not hit:
-			return None, None
-		name, z, info = hit
-		return name, z.read(info)
+			return None
+		_, z, info = hit
+		return z.read(info)
 
 	def all_hashes(self):
 		hashes = {}
@@ -95,6 +145,11 @@ def _offtout(x):
 	if x < 0:
 		b[7] |= 0x80
 	return bytes(b)
+
+
+def _offtin(b):
+	v = struct.unpack('<Q', bytes(b[:7]) + bytes([b[7] & 0x7f]))[0]
+	return -v if b[7] & 0x80 else v
 
 
 def bsdiff(old, new):
@@ -164,78 +219,138 @@ def bsdiff(old, new):
 	return b'BSDIFF40' + _offtout(len(c)) + _offtout(len(d)) + _offtout(len(new)) + c + d + e
 
 
-def check_patch(old, new, patch):
-	"""Apply the patch with the bspatch of the system, it's what the players use."""
+def patch_extra_size(patch):
+	"""Number of bytes stored literally in a patch (the bytes that aren't from the old file)."""
+	c, d = _offtin(patch[8:16]), _offtin(patch[16:24])
+	return len(bz2.decompress(patch[32 + c + d:]))
+
+
+def bspatch(old, patch):
+	"""Apply a patch with the bspatch of the system, it's what the players use."""
 	with tempfile.TemporaryDirectory() as tmp:
 		paths = [os.path.join(tmp, n) for n in ('old', 'new', 'patch')]
-		open(paths[0], 'wb').write(old)
-		open(paths[2], 'wb').write(patch)
+		write_file(paths[0], old)
+		write_file(paths[2], patch)
 		subprocess.run(['bspatch', paths[0], paths[1], paths[2]], check=True)
-		return open(paths[1], 'rb').read() == new
+		return read_file(paths[1])
 
 
 # --- commands -------------------------------------------------------------------------
 
-def cmd_payload(args):
-	entries = read_manifest(args.manifest)
+def read_patch_list(patches_dir):
+	"""{path: (md5 of the retail file, md5 of the result)}"""
+	result = {}
+	list_path = os.path.join(patches_dir, PATCH_LIST)
+	if not os.path.isfile(list_path):
+		return result
+	with open(list_path) as f:
+		for line in f:
+			if line.startswith('#') or not line.strip():
+				continue
+			path, src, dst = line.split()
+			result[path] = (src, dst)
+	return result
+
+
+def cmd_patches(args):
+	manifest = Manifest(args.manifest)
 	retail = RetailGame(args.retail)
+	if os.path.exists(args.patches):
+		shutil.rmtree(args.patches)
+	lines = ['# Patches from the retail files to base/, created by "pak007.py patches"',
+		'# <path> <md5 of the retail file> <md5 of the result>']
+	total = 0
+	for path in manifest.patches:
+		data = read_file(os.path.join(args.repo, 'base', path))
+		retail_data = retail.read(path)
+		if retail_data is None:
+			raise Error('%s: not in the retail game, it can\'t be patched (use copy?)' % path)
+		patch = bsdiff(retail_data, data)
+		if bspatch(retail_data, patch) != data:
+			raise Error('%s: the patch doesn\'t reproduce the file' % path)
+		write_file(os.path.join(args.patches, path + '.bsdiff'), patch)
+		lines.append('%s %s %s' % (path, md5(retail_data), md5(data)))
+		total += patch_extra_size(patch)
+	write_file(os.path.join(args.patches, PATCH_LIST), ('\n'.join(lines) + '\n').encode())
+	print('%d patches -> %s (%d bytes of changes)' % (len(manifest.patches), args.patches, total))
+
+
+def check(repo, manifest, patches_dir):
+	"""Problems of the manifest and the patches, as a list of messages."""
+	problems = []
+	released = manifest.released()
+	files = base_files(repo)
+	for path in files:
+		in_released = path.lower() in released
+		excluded = manifest.is_excluded(path)
+		if not in_released and not excluded:
+			problems.append('%s: not in %s, add it as copy, patch or exclude' % (path, os.path.basename(manifest.path)))
+		elif in_released and excluded:
+			problems.append('%s: released and excluded at the same time' % path)
+	existing = set(f.lower() for f in files)
+	for path, source in manifest.copies:
+		src = os.path.join(repo, source) if source else os.path.join(repo, 'base', path)
+		if not os.path.isfile(src):
+			problems.append('%s: %s doesn\'t exist' % (path, src))
+		if ' ' in path:
+			problems.append('%s: paths with spaces can\'t be released' % path)
+	patch_list = read_patch_list(patches_dir)
+	for path in manifest.patches:
+		if path.lower() not in existing:
+			problems.append('%s: not in base/' % path)
+			continue
+		entry = patch_list.get(path)
+		if not entry or not os.path.isfile(os.path.join(patches_dir, path + '.bsdiff')):
+			problems.append('%s: no patch, run "pak007.py patches"' % path)
+		elif entry[1] != md5(read_file(os.path.join(repo, 'base', path))):
+			problems.append('%s: changed since the patch was created, run "pak007.py patches"' % path)
+	for path in patch_list:
+		if path not in manifest.patches:
+			problems.append('%s: patch for a file that isn\'t patched any more, run "pak007.py patches"' % path)
+	return problems
+
+
+def cmd_check(args):
+	problems = check(args.repo, Manifest(args.manifest), args.patches)
+	for p in problems:
+		print(p)
+	if problems:
+		raise Error('%d problems' % len(problems))
+	print('pak007 manifest and patches are up to date')
+
+
+def cmd_payload(args):
+	manifest = Manifest(args.manifest)
+	problems = check(args.repo, manifest, args.patches)
+	if problems:
+		raise Error('\n'.join(problems))
 	if os.path.exists(args.out):
 		shutil.rmtree(args.out)
-	os.makedirs(args.out)
-
 	lines = ['# pak007.pk4 for Prey2006, generated by release/macos/pak007.py',
 		'# copy  <path> <md5>',
 		'# patch <path> <md5 of the retail file> <md5 of the result>']
-	for kind, path, source in entries:
-		src_file = os.path.join(args.repo, source) if source else os.path.join(args.repo, 'base', path)
-		data = open(src_file, 'rb').read()
-		if kind == 'copy':
-			_, retail_data = retail.read(path)
-			if retail_data is not None and source is None and retail_data != data:
-				print('warning: %s is shipped as it is but also exists in the retail game' % path)
-			dst = os.path.join(args.out, 'files', path)
-			os.makedirs(os.path.dirname(dst), exist_ok=True)
-			open(dst, 'wb').write(data)
-			lines.append('copy %s %s' % (path, md5(data)))
-		else:
-			pak, retail_data = retail.read(path)
-			if retail_data is None:
-				sys.exit('%s: not in the retail game, it can\'t be patched' % path)
-			patch = bsdiff(retail_data, data)
-			if not check_patch(retail_data, data, patch):
-				sys.exit('%s: the patch doesn\'t reproduce the file' % path)
-			dst = os.path.join(args.out, 'patches', path + '.bsdiff')
-			os.makedirs(os.path.dirname(dst), exist_ok=True)
-			open(dst, 'wb').write(patch)
-			lines.append('patch %s %s %s' % (path, md5(retail_data), md5(data)))
-		if ' ' in path:
-			sys.exit('%s: paths with spaces are not supported' % path)
-	open(os.path.join(args.out, 'pak007.list'), 'w').write('\n'.join(lines) + '\n')
-	print('pak007 payload: %d files -> %s' % (len(entries), args.out))
-
-
-def released_paths(manifest):
-	return set(path.lower() for _, path, _ in read_manifest(manifest))
+	for path, source in manifest.copies:
+		data = read_file(os.path.join(args.repo, source) if source else os.path.join(args.repo, 'base', path))
+		write_file(os.path.join(args.out, 'files', path), data)
+		lines.append('copy %s %s' % (path, md5(data)))
+	patch_list = read_patch_list(args.patches)
+	for path in manifest.patches:
+		write_file(os.path.join(args.out, 'patches', path + '.bsdiff'), read_file(os.path.join(args.patches, path + '.bsdiff')))
+		src, dst = patch_list[path]
+		lines.append('patch %s %s %s' % (path, src, dst))
+	write_file(os.path.join(args.out, 'pak007.list'), ('\n'.join(lines) + '\n').encode())
+	print('pak007 payload: %d files, %d patches -> %s' % (len(manifest.copies), len(manifest.patches), args.out))
 
 
 def cmd_extras(args):
-	released = released_paths(args.manifest)
-	base = os.path.join(args.repo, 'base')
-	files = []
-	for root, _, names in os.walk(base):
-		for n in names:
-			full = os.path.join(root, n)
-			rel = os.path.relpath(full, base).replace(os.sep, '/')
-			# default.cfg is an empty placeholder that would replace the key bindings of the game
-			if rel.lower() not in released and n != '.DS_Store' and rel != 'default.cfg':
-				files.append((full, rel))
-	files.sort(key=lambda f: f[1])
+	manifest = Manifest(args.manifest)
+	files = [f for f in base_files(args.repo) if manifest.is_excluded(f) and f not in NEVER_PACKED]
 	tmp = args.out + '.tmp'
 	with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
-		for full, rel in files:
-			z.write(full, rel)
+		for rel in files:
+			z.write(os.path.join(args.repo, 'base', rel), rel)
 	os.replace(tmp, args.out)
-	for _, rel in files:
+	for rel in files:
 		print('  ' + rel)
 	print('%d files -> %s' % (len(files), args.out))
 
@@ -247,8 +362,7 @@ def iter_files(directory):
 			full = os.path.join(root, n)
 			if os.path.islink(full):
 				continue
-			data = open(full, 'rb').read()
-			yield os.path.relpath(full, directory), data
+			yield os.path.relpath(full, directory), read_file(full)
 			if n.lower().endswith(('.pk4', '.zip')):
 				with zipfile.ZipFile(full) as z:
 					for info in z.infolist():
@@ -257,52 +371,61 @@ def iter_files(directory):
 
 
 def cmd_verify(args):
-	retail = RetailGame(args.retail)
-	hashes = retail.all_hashes()
-	excluded = set()
-	if args.manifest:
-		released = released_paths(args.manifest)
-		base = os.path.join(args.repo, 'base')
-		for root, _, names in os.walk(base):
-			for n in names:
-				full = os.path.join(root, n)
-				rel = os.path.relpath(full, base).replace(os.sep, '/')
-				if rel.lower() not in released:
-					excluded.add(md5(open(full, 'rb').read()))
+	retail_hashes = {}
+	if os.path.isfile(os.path.join(args.retail, RETAIL_PAKS[0])):
+		retail_hashes = RetailGame(args.retail).all_hashes()
+	else:
+		print('warning: retail game not found in %s, only checking against the excluded files of base/' % args.retail)
+	manifest = Manifest(args.manifest)
+	excluded = {}
+	for path in base_files(args.repo):
+		if path.lower() not in manifest.released():
+			data = read_file(os.path.join(args.repo, 'base', path))
+			if len(data) > 64:	# small files like an empty default.cfg can be equal to anything
+				excluded[md5(data)] = path
 	problems = 0
 	count = 0
 	for name, data in iter_files(args.dir):
 		count += 1
 		h = md5(data)
-		if len(data) > 0 and h in hashes:
-			print('RETAIL FILE: %s (= %s)' % (name, hashes[h]))
+		if data and h in retail_hashes:
+			print('RETAIL FILE: %s (= %s)' % (name, retail_hashes[h]))
 			problems += 1
-		elif len(data) > 64 and h in excluded:
-			print('NOT RELEASED FILE: %s' % name)
+		elif h in excluded:
+			print('NOT RELEASED FILE: %s (= base/%s)' % (name, excluded[h]))
 			problems += 1
 		elif name.lower().endswith(('.roq', '.pk4')) and ':' not in name:
 			print('UNEXPECTED: %s' % name)
 			problems += 1
 	print('checked %d files, %d problems' % (count, problems))
-	return 1 if problems else 0
+	if problems:
+		raise Error('files that must not be released were found')
 
 
-def main():
+def main(argv=None):
 	repo = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-	default_retail = os.path.expanduser('~/.local/share/prey06/base')
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 	parser.add_argument('--repo', default=repo)
-	parser.add_argument('--manifest', default=os.path.join(repo, 'release', 'macos', 'pak007.manifest'))
-	parser.add_argument('--retail', default=default_retail, help='directory with the retail pk4s')
+	parser.add_argument('--manifest', help='default: <repo>/release/macos/pak007.manifest')
+	parser.add_argument('--patches', help='default: <repo>/release/macos/patches')
+	parser.add_argument('--retail', default=os.environ.get('PREY_RETAIL_DIR', os.path.expanduser('~/.local/share/prey06/base')),
+		help='directory with the retail pk4s (default: $PREY_RETAIL_DIR or ~/.local/share/prey06/base)')
 	sub = parser.add_subparsers(dest='command', required=True)
-	p = sub.add_parser('payload')
-	p.add_argument('out')
-	p = sub.add_parser('extras')
-	p.add_argument('out')
-	p = sub.add_parser('verify')
-	p.add_argument('dir')
-	args = parser.parse_args()
-	return {'payload': cmd_payload, 'extras': cmd_extras, 'verify': cmd_verify}[args.command](args) or 0
+	sub.add_parser('patches')
+	sub.add_parser('check')
+	sub.add_parser('payload').add_argument('out')
+	sub.add_parser('extras').add_argument('out')
+	sub.add_parser('verify').add_argument('dir')
+	args = parser.parse_args(argv)
+	args.manifest = args.manifest or os.path.join(args.repo, 'release', 'macos', 'pak007.manifest')
+	args.patches = args.patches or os.path.join(args.repo, 'release', 'macos', 'patches')
+	commands = {'patches': cmd_patches, 'check': cmd_check, 'payload': cmd_payload, 'extras': cmd_extras, 'verify': cmd_verify}
+	try:
+		commands[args.command](args)
+	except Error as e:
+		print('error: %s' % e, file=sys.stderr)
+		return 1
+	return 0
 
 
 if __name__ == '__main__':

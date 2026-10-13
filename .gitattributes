@@ -17,3 +17,4 @@ MaterialEditorDefs.med text
 
 *.lang binary
 *.vfp binary
+*.bsdiff binary

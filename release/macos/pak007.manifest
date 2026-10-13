@@ -1,9 +1,12 @@
-# Files of base/ (pak007.pk4) that go into the macOS release, see pak007.py.
+# Every file of base/ (pak007.pk4) and what happens to it in the macOS release, see pak007.py.
+# The check (CI) fails when a file of base/ isn't listed.
 #
-#   copy  <path> [<source>]  shipped as it is (own work of the port)
-#   patch <path>             modified retail file, only a patch against the player's copy is shipped
+#   copy    <path> [<source>]  shipped as it is (own work of the port)
+#   patch   <path>             modified retail file, only a patch against the player's copy is
+#                              shipped; run "pak007.py patches" after changing it
+#   exclude <pattern>          never released
 #
-# Not listed (never released): the hi-res loading screen and the intro videos (artwork of
+# Excluded: the hi-res loading screen and the intro videos (artwork of
 # the game), the tutorial maps (Prey SDK), the material editor files and megaTexture.vfp
 # (not used on macOS, unclear origin), the console textures (replaced by our own ones) and
 # default.cfg (an empty placeholder, it would replace the key bindings of the game).
@@ -57,3 +60,13 @@ patch guis/vehicles/shuttlehud.gui
 patch guis/weapons/sniperoverlay.gui
 patch materials/gfx.mtr
 patch materials/video.mtr
+
+# Never released (see the top). "pak007.py extras" packs them for a local installation.
+exclude default.cfg
+exclude dds/guis/assets/loading/loading.dds
+exclude guis/assets/loading/loading.tga
+exclude video/*.roq
+exclude maps/Tutorial?Maps/*
+exclude MaterialEditorDefs.med
+exclude models/materialeditor/*
+exclude glprogs/megaTexture.vfp

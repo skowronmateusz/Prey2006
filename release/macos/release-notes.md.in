@@ -1,0 +1,26 @@
+macOS build of Prey2006 for Apple Silicon (macOS 11 or newer). See the [README](https://github.com/skowronmateusz/Prey2006#changes) for the changes of this fork (game portals, widescreen/ultrawide, savegames, getting stuck in walls).
+
+**The game data is not included.** You need your own copy of Prey (2006) for Windows (for example the DVD).
+
+### Installation
+
+1. Open `@DMG@` and drag `Prey2006.app` into Applications.
+2. Copy `pak000.pk4`, `pak001.pk4`, `pak002.pk4`, `pak003.pk4` and `pak004.pk4` from your copy of the game into `~/.local/share/prey06/base/`:
+   - on the DVD they are in `Setup/Data/Base/`
+   - in a Windows installation in the `base` folder (e.g. `C:\Program Files\Prey\base\`)
+
+   If they are missing, the app offers to create and open this folder. In the Finder you can also use Go > Go to Folder… (⇧⌘G).
+3. Start Prey2006. The app is not notarized, so the first time macOS blocks it: right-click the app and choose **Open**, or click **Open Anyway** in System Settings > Privacy & Security. If macOS says the app is damaged, run:
+   ```
+   xattr -dr com.apple.quarantine /Applications/Prey2006.app
+   ```
+
+On the first start the app creates `~/.local/share/prey06/base/pak007.pk4` with the widescreen HUD, menus and other fixes. Most of these are modified files of the original game, so the app only contains the changes and applies them to your copy of the game, which is not modified. The details are in `Read Me.txt` in the disk image.
+
+Ultrawide: open the console (Shift+Esc) and enter `r_aspectRatio -1`.
+
+### Files
+
+- `@DMG@`, SHA-256: `@SHA256@`
+
+Source code under the GPL v3; uses SDL2 (zlib) and OpenAL Soft (LGPL). Prey is a trademark of its respective owners, this project is not affiliated with them.

@@ -6,8 +6,9 @@
 # Usage: release/macos/build_release.sh [version]
 #
 # Environment:
-#   PREY_RETAIL_DIR   directory with the retail pak000-004.pk4, needed to create the
-#                     patches (default: ~/.local/share/prey06/base)
+#   PREY_RETAIL_DIR   directory with the retail pak000-004.pk4 (default: ~/.local/share/prey06/base).
+#                     Optional: if it exists, the disk image is also checked against all
+#                     files of the retail game. The patches are taken from release/macos/patches.
 #   MIN_MACOS         minimum macOS version (default: 11.0)
 #
 # Needs Xcode (or the command line tools), CMake, Ninja and pkg-config.
@@ -37,7 +38,9 @@ step() { printf '\n=== %s\n' "$*"; }
 for tool in cmake ninja pkg-config; do
 	command -v $tool > /dev/null || { echo "error: $tool is required" >&2; exit 1; }
 done
-[ -f "$RETAIL/pak000.pk4" ] || { echo "error: retail pk4s not found in $RETAIL (set PREY_RETAIL_DIR)" >&2; exit 1; }
+
+step "Checking the pak007 manifest and patches"
+python3 -I "$HERE/pak007.py" check
 
 # --- libraries: SDL2 and OpenAL Soft from neo/libs, built for MIN_MACOS ----------------
 
@@ -96,7 +99,7 @@ for lib in "$APP/Contents/Frameworks/"*.dylib; do
 done
 
 install -m 755 "$HERE/install_assets.sh" "$APP/Contents/Resources/install_assets.sh"
-python3 -I "$HERE/pak007.py" --retail "$RETAIL" payload "$APP/Contents/Resources/pak007"
+python3 -I "$HERE/pak007.py" payload "$APP/Contents/Resources/pak007"
 
 ICONSET="$BUILD/Prey2006.iconset"
 rm -rf "$ICONSET"
@@ -114,24 +117,14 @@ cp "$REPO/neo/libs/SDL2/LICENSE.txt" "$APP/Contents/Resources/licenses/SDL2-zlib
 cp "$REPO/neo/libs/OpenalSoft/COPYING" "$APP/Contents/Resources/licenses/OpenAL-Soft-LGPL-2.0.txt"
 cp "$REPO/neo/libs/OpenalSoft/LICENSE-pffft" "$APP/Contents/Resources/licenses/OpenAL-Soft-pffft.txt"
 
-# check that the binaries run on MIN_MACOS and only use system libraries or the bundle
-for bin in "$APP/Contents/MacOS/prey06" "$APP/Contents/MacOS/prey06ded" "$APP/Contents/MacOS/game$ARCH.dylib" "$APP/Contents/Frameworks/"*.dylib; do
-	minos="$(otool -l "$bin" | awk '/LC_BUILD_VERSION/ { f = 1 } f && $1 == "minos" { print $2; exit }')"
-	if [ "$minos" != "$MIN_MACOS" ]; then
-		echo "error: $(basename "$bin") requires macOS $minos" >&2
-		exit 1
-	fi
-	if otool -L "$bin" | tail -n +2 | awk '{ print $1 }' | grep -Ev '^(/usr/lib/|/System/|@rpath/)'; then
-		echo "error: $(basename "$bin") links libraries outside the system and the app bundle" >&2
-		exit 1
-	fi
-done
-
 step "Signing (ad-hoc)"
 codesign --force --sign - "$APP/Contents/Frameworks/"*.dylib "$APP/Contents/MacOS/game$ARCH.dylib" \
 	"$APP/Contents/MacOS/prey06" "$APP/Contents/MacOS/prey06ded"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+
+step "Testing the app"
+PREY2006_APP="$APP" python3 -m unittest discover -s "$HERE/tests" -p test_app.py -v
 
 # --- disk image ----------------------------------------------------------------------
 
@@ -146,6 +139,13 @@ cp -R "$APP/Contents/Resources/licenses" "$DMG_STAGE/Licenses"
 step "Checking for files of the retail game"
 python3 -I "$HERE/pak007.py" --retail "$RETAIL" verify "$DMG_STAGE"
 
-hdiutil create -volname "Prey2006 $VERSION" -srcfolder "$DMG_STAGE" -fs HFS+ -format UDZO -ov "$DMG"
-shasum -a 256 "$DMG" | tee "$DMG.sha256"
+# hdiutil sometimes fails with "Resource busy" on CI, try again
+for attempt in 1 2 3; do
+	hdiutil create -volname "Prey2006 $VERSION" -srcfolder "$DMG_STAGE" -fs HFS+ -format UDZO -ov "$DMG" && break
+	[ $attempt = 3 ] && exit 1
+	sleep 5
+done
+( cd "$BUILD" && shasum -a 256 "$(basename "$DMG")" ) | tee "$DMG.sha256"
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@DMG@/$(basename "$DMG")/g" -e "s/@SHA256@/$(cut -d' ' -f1 "$DMG.sha256")/g" \
+	"$HERE/release-notes.md.in" > "$BUILD/release-notes.md"
 echo "Done: $DMG"
