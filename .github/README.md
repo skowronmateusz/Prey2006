@@ -1,38 +1,26 @@
-<p align="center"> <img src="https://cdn2.steamgriddb.com/logo_thumb/c5ab0bc60ac7929182aadd08703f1ec6.png">
+# Prey2006
 
-> [!TIP]
-> We have a discord server, feel free to join the discussion, the invite is [here.](https://discord.gg/tJDGrk6w4H)
+A fork of [FriskTheFallenHuman/Prey2006](https://github.com/FriskTheFallenHuman/Prey2006) (the Prey 2006 SDK integrated with the dhewm3 / Doom 3 GPL codebase) with fixes for game portals, widescreen and macOS. See the original repository for the project itself, building on other platforms and credits.
 
-> [!CAUTION]
-> You **MUST** source your own legal copy of Prey (2006) to run this, i wouldn't provide any links for this.
-> i've been getting a lot of questions about but, please keep in mind this is just a source port.
+You need your own copy of Prey (2006) to play, the game data is not included.
 
-> [!IMPORTANT]
-> We are currently looking for contributors that wants to contribute into this project.
+## macOS
 
-> [!CAUTION]
-> This project is far from being completed, currently there is a lot of visual problems with guis and the game portals.
-> 
-> The binaries are provide as-is, support may be limited due to my lack of knowledge,
-> This project was create due to the insatisfaction of some source ports barely fixing or improving
-> and or sacrificing features for other platforms.
-> I hope you guys understand, but contributions are welcome :)
+Download `Prey2006-<version>-macos-arm64.dmg` from the [releases](https://github.com/skowronmateusz/Prey2006/releases) (Apple Silicon, macOS 11 or newer):
 
-# Introduction
+1. Drag `Prey2006.app` into Applications.
+2. Copy `pak000.pk4` ... `pak004.pk4` from your copy of the game (on the DVD in `Setup/Data/Base`, in a Windows installation in `base`) into `~/.local/share/prey06/base/`. If they are missing, the app offers to create and open this folder.
+3. Start the app. The first time, macOS blocks it because it isn't notarized: right-click it and choose Open, or allow it in System Settings > Privacy & Security. If macOS says the app is damaged: `xattr -dr com.apple.quarantine /Applications/Prey2006.app`.
 
-Prey 2006 SDK integrated with Doom 3 GPL release
+On the first start the app creates `~/.local/share/prey06/base/pak007.pk4` with the widescreen HUD, menus and other fixed files. Most of them are modified files of the game, so the app only contains patches and applies them to your copy of the game. The full instructions are in the `Read Me.txt` of the disk image ([release/macos/ReadMe.txt](../release/macos/ReadMe.txt)).
 
-## About
+Savegames are stored in `~/.local/share/prey06/base`, the configuration in `~/.config/prey06/base`.
 
-This project is a code integration of the Prey 2006 SDK against the Doom 3 GPL codebase.
-This means this includes new engine side features that were in the Prey 2006 engine,
-and some adjustments to the Prey 2006 SDK code.
+Building the release: [release/macos/README.md](../release/macos/README.md).
 
-This runs in a semi vanilla Dhewm3 v1.5.4 fork that specifically removes imgui, soft particles and joystick support for the time being.
+## Changes
 
-## Changes in this fork
-
-Compared to the [original repository](https://github.com/FriskTheFallenHuman/Prey2006):
+Compared to the original repository:
 
 ### Game portals
 
@@ -64,33 +52,9 @@ Compared to the [original repository](https://github.com/FriskTheFallenHuman/Pre
 
 - After linking, the executables and the game dylib are relinked against `@rpath` (`neo/CMakeModules/MacBundleLibs.cmake`), with `@executable_path/../Frameworks` first and the original library directories (e.g. Homebrew) as fallback. The built `prey06` and `gamearm64.dylib` can be copied into `Prey2006.app/Contents/MacOS` as they are and use the libraries in the app bundle, and they still run from `output/macosx`.
 
+- `release/macos/build_release.sh` builds `Prey2006.app` and a disk image without files of the retail game: SDL2 and OpenAL Soft from `neo/libs` and the binaries are built for macOS 11, the modified retail files of `pak007.pk4` ship as patches. `OUTPUT_FOLDER` can be set to build into another directory than `output/<os>`.
+
 ### File system
 
 - `pak007.pk4` (the port's widescreen HUD, menus, loading screen and other fixed assets, next to the executable) now takes precedence over all other pk4s of the base game. Before, the directory of the executable was searched last when the game data was in another directory (for example `~/.local/share/prey06/base` on macOS/Linux), so the original files in `pak000.pk4` were used and the HUD was stretched. Loose files in the search directories and mods (`fs_game`) can still override it.
-
-## Compiling
-
-For Windows:
-
-- Clone the repo.
-- Install [Visual Studio 2019](https://visualstudio.microsoft.com/vs/older-downloads/) or Visual [Visual Studio 2022](https://visualstudio.microsoft.com/vs/)
-- [CMake](https://cmake.org/download/)
-- Run either **cmake_msvc2019.cmd** or **cmake_msvc2022.cmd**
-
-For Debian/Ubuntu
-
-- Intall the dependencies
-  - ```sudo apt install libgl1-mesa-dev libsdl2-dev libopenal-dev libcurl4-openssl-dev cmake ninja-build```
-- Make **cmake_linux.sh** a executable and execute with
-  - ```./cmake_linux.sh gcc release```
-
-For other Linux Distros: It should compile just fine in theory.
-
-## Credits
-
-This fork wouldn't be possible by the 3 previous attempts of porting Prey before me:
-
-- [PreyDoom](https://github.com/jmarshall23/PreyDoom)
-- [PreyVR](https://github.com/neitey/PreyVR)
-- [com.n0n3m4.diii4a](https://github.com/glKarin/com.n0n3m4.diii4a)
-- [dhewm3](https://github.com/dhewm/dhewm3)
+- The empty placeholder `base/default.cfg` is no longer packed into `pak007.pk4`, it replaced the default key bindings of the game.
