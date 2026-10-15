@@ -410,6 +410,7 @@ public:
 
 	//rww - instead of doing this through the death proxy, this is safer (being an af, the death proxy could be oriented strangely or removed in numerous ways)
 	virtual void		RestorePlayerLocationFromDeathwalk( const idVec3& origin, const idMat3& bboxAxis, const idVec3& viewDir, const idAngles& angles );
+	void				CheckInvalidPosition( void );
 
 	virtual void		ProjectOverlay( const idVec3 &origin, const idVec3 &dir, float size, const char *material );
 
@@ -448,6 +449,12 @@ protected:
 	idMat3				deathwalkLastEyeAxis;
 	bool				deathwalkLastCrouching;
 	//HUMANHEAD END
+
+	// last finite position of the player, it is moved back there when its physics becomes NaN (not saved)
+	bool				hasLastValidPosition;
+	idVec3				lastValidOrigin;
+	idMat3				lastValidAxis;
+	idVec3				lastValidViewDir;
 
 	// Overridden Methods
 	virtual int			GetMaxHealth()	{	return inventory.maxHealth;	}

@@ -126,6 +126,8 @@ hhPlayer::hhPlayer( void ) :
 	bSpiritWalk			= false;
 	bDeathWalk			= false;
 	bReallyDead			= false;
+	hasLastValidPosition = false;
+	lastValidViewDir	= idVec3( 1.0f, 0.0f, 0.0f );
 	bPossessed			= false;
 	bInCinematic		= false;
 	bFrozen				= false;
@@ -3536,6 +3538,9 @@ void hhPlayer::Killed( idEntity *inflictor, idEntity *attacker, int damage, cons
 	// HUMANHEAD END
 
 	if ( !bReallyDead ) { // Only go into deathwalk mode if the player is in the transitional death state
+		// the position is where the player comes back after the deathwalk
+		CheckInvalidPosition();
+
 		idVec3 origin;
 		idMat3 axis;
 		idVec3 viewDir;
@@ -3992,6 +3997,54 @@ void hhPlayer::RestorePlayerLocationFromDeathwalk( const idVec3& origin, const i
 	Teleport( newOrigin, newAxis, newViewDir, (newAngles.ToMat3() * deathwalkLastEyeAxis.Transpose()).ToAngles(), NULL );
 }
 //HUMANHEAD END
+
+/*
+=====================
+hhPlayer::CheckInvalidPosition
+
+Once the origin of the player is NaN it stays NaN: nothing but the 2D overlays is drawn, collision
+traces with it take very long, and if the player dies it comes back there from the deathwalk. Move
+the player back to the last finite position then.
+=====================
+*/
+static bool IsFiniteVec3( const idVec3 &v ) {
+	return !FLOAT_IS_NAN( v.x ) && !FLOAT_IS_NAN( v.y ) && !FLOAT_IS_NAN( v.z );
+}
+
+void hhPlayer::CheckInvalidPosition( void ) {
+	if ( GetPhysics() != &physicsObj || InVehicle() ) {
+		return;
+	}
+
+	const idVec3 &origin = physicsObj.GetOrigin();
+	const idMat3 &axis = physicsObj.GetAxis();
+	if ( IsFiniteVec3( origin ) && IsFiniteVec3( axis[0] ) && IsFiniteVec3( axis[1] ) && IsFiniteVec3( axis[2] ) ) {
+		hasLastValidPosition = true;
+		lastValidOrigin = origin;
+		lastValidAxis = axis;
+		if ( IsFiniteVec3( GetAxis()[0] ) ) {
+			lastValidViewDir = GetAxis()[0];
+		}
+		return;
+	}
+
+	if ( !hasLastValidPosition ) {
+		return;
+	}
+
+	idEntity *groundEnt = physicsObj.GetGroundEntity();
+	gameLocal.Warning( "player position is not finite: origin (%s) velocity (%s) gravity (%s) ground '%s' bound to '%s', %s",
+		origin.ToString(), physicsObj.GetLinearVelocity().ToString(), physicsObj.GetGravity().ToString(),
+		groundEnt ? groundEnt->GetName() : "", GetBindMaster() ? GetBindMaster()->GetName() : "",
+		va( "moving back to (%s)", lastValidOrigin.ToString() ) );
+
+	idAngles viewAngles = GetUntransformedViewAngles();
+	if ( FLOAT_IS_NAN( viewAngles.pitch ) || FLOAT_IS_NAN( viewAngles.yaw ) || FLOAT_IS_NAN( viewAngles.roll ) ) {
+		viewAngles.Zero();
+	}
+	physicsObj.SetLinearVelocity( vec3_origin );
+	TeleportNoKillBox( lastValidOrigin, lastValidAxis, lastValidViewDir, viewAngles );
+}
 
 //=============================================================================
 //
@@ -5217,6 +5270,8 @@ void hhPlayer::Move( void ) {
 	BecomeActive( TH_PHYSICS ); //rww - prevent the bug that id so lovingly left for us
 	RunPhysics();
 	// HUMANHEAD END
+
+	CheckInvalidPosition();
 
 	// HUMANHEAD pdm: Experimental: allow player to jump up onto wallwalk
 #define WALLWALK_EXPERIMENT 0
