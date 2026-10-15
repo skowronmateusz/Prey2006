@@ -296,6 +296,12 @@ void hhPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef )
 		return;
 	}
 
+	// the direction is NaN when the damage direction or the view axis was not finite, it would make the view
+	// kick NaN (see AngleOffset) and move the motion blur and the screen blobs off the screen
+	if ( FLOAT_IS_NAN( localKickDir.x ) || FLOAT_IS_NAN( localKickDir.y ) || FLOAT_IS_NAN( localKickDir.z ) ) {
+		localKickDir.Zero();
+	}
+
 	if (!player->InVehicle()) {
 		//
 		// Motion Blur effect
@@ -492,9 +498,20 @@ idAngles hhPlayerView::AngleOffset(float kickSpring, float kickDamping) {
 		frametime = 48.0f;
 	}
 	//HUMANHEAD END
+	if ( frametime < 0.0f ) {
+		frametime = 0.0f;
+	}
 
-	assert(!FLOAT_IS_NAN(kickSpeed.pitch) && !FLOAT_IS_NAN(kickSpeed.yaw) && !FLOAT_IS_NAN(kickSpeed.roll));
-	assert(!FLOAT_IS_NAN(kickAngles.pitch) && !FLOAT_IS_NAN(kickAngles.yaw) && !FLOAT_IS_NAN(kickAngles.roll));
+	// a NaN or infinite kick (e.g. from a damage direction that was not finite) never recovers, every
+	// following frame computes it from itself, and as the kick is added to the view angles the view axis
+	// becomes NaN and nothing but the 2D overlays is drawn, so drop it
+	for ( int i = 0; i < 3; i++ ) {
+		if ( FLOAT_IS_NAN( kickSpeed[i] ) || FLOAT_IS_NAN( kickAngles[i] ) ) {
+			kickSpeed.Zero();
+			kickAngles.Zero();
+			break;
+		}
+	}
 
 	kickSpeed-=kickDamping*kickSpeed*frametime/1000;
 	kickSpeed-=kickSpring*kickAngles*frametime/1000;
