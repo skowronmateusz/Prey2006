@@ -556,6 +556,12 @@ try_again:
 	#endif // SDL2
 
 		context = SDL_GL_CreateContext(window);
+		if ( context == NULL ) {
+			common->Warning( "Couldn't create OpenGL context: %s\n", SDL_GetError() );
+			SDL_DestroyWindow( window );
+			window = NULL;
+			continue;
+		}
 
 		GLimp_SetSwapInterval( r_swapInterval.GetInteger() );
 		r_swapInterval.ClearModified();
@@ -985,7 +991,12 @@ glimpParms_t GLimp_GetCurState( bool checkConsistency)
 		}
 	}
   #else // SDL2
-	if ( SDL_GL_GetAttribute( SDL_GL_MULTISAMPLEBUFFERS, &curMultiSamples ) == 0 && curMultiSamples > 0 ) {
+	if ( context == NULL ) {
+		// SDL2's SDL_GL_GetAttribute() queries the current GL context with glGetIntegerv(),
+		// which crashes if there is none (this happens when GLimp_Init() calls
+		// GLimp_SetScreenParms() before creating the context) => use the requested value
+		curMultiSamples = r_multiSamples.GetInteger();
+	} else if ( SDL_GL_GetAttribute( SDL_GL_MULTISAMPLEBUFFERS, &curMultiSamples ) == 0 && curMultiSamples > 0 ) {
 		if ( SDL_GL_GetAttribute( SDL_GL_MULTISAMPLESAMPLES, &curMultiSamples ) != 0 ) {
 			curMultiSamples = 0; // SDL_GL_GetAttribute() call failed, assume no MSAA
 		}
